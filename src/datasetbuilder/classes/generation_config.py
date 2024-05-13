@@ -1,9 +1,10 @@
 from src.datasetbuilder.classes.loader_config import LoaderConfig
 from src.datasetbuilder.classes.model_config import ModelConfig
-import json
+import configparser
 
-
-LANGUAGES = ["en", "it"]
+CONFIG = configparser.ConfigParser()
+CONFIG.read("src/datasetbuilder/prompts.ini")
+LANGUAGES = CONFIG.sections()
 
 class GenerationConfig:
     def __init__(self, loader_config: LoaderConfig, model_config: ModelConfig, num_rows: int=10000, rows_per_chunk: int=3, language: str="en", agents: int=1):
@@ -14,7 +15,7 @@ class GenerationConfig:
             raise ValueError("Error, rows_per_chunk is expected to be greater than 0")
         
         if language not in LANGUAGES:
-            raise ValueError("Error, language is expected to be one of these: " + LANGUAGES)
+            raise ValueError("Error, language is expected to be one of these: " + str(LANGUAGES))
         
         if agents <= 0:
             raise ValueError("Error, agents is expected to be greater than 0")

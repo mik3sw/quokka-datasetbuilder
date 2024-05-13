@@ -1,4 +1,3 @@
-from transformers import TextStreamer
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from src.datasetbuilder.classes.model_config import ModelConfig
@@ -15,6 +14,7 @@ ZEPHYR = "zephyr"
 
 
 def initialize_model_tokenizer(model_config: ModelConfig, console: Console) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
+    return None, None
     try:
         device = torch.device(model_config.device)
         console.log(f"Setting device [bold green]{str(device)}[/bold green]")
@@ -24,18 +24,28 @@ def initialize_model_tokenizer(model_config: ModelConfig, console: Console) -> T
         console.log(f"[bold red]ERROR[/bold red] - Setting default device [bold green]{str(device)}[/bold green]")
     
     console.log("Loading model...")
+    params = {
+        "torch_dtype": model_config.dtype,
+        "trust_remote_code": model_config.trust_remote_code,
+        "low_cpu_mem_usage": model_config.low_cpu_mem_usage,
+        "quantization_config": model_config.quantization_config
+    }
+    params = {k: v for k, v in params.items() if v is not None}
+
     if model_config.use_flash_attn:
-        model = AutoModelForCausalLM.from_pretrained(model_config.hf_model_id, torch_dtype=model_config.dtype, attn_implementation="flash_attention_2", trust_remote_code=model_config.trust_remote_code, low_cpu_mem_usage=model_config.low_cpu_mem_usage).eval()
-    else:
-        model = AutoModelForCausalLM.from_pretrained(model_config.hf_model_id, trust_remote_code=model_config.trust_remote_code, low_cpu_mem_usage=model_config.low_cpu_mem_usage).eval()
+        console.log("Using [bold pink]Flash Attention[/bold pink]")
+        params["attn_implementation"] = "flash_attention_2"
+    
+    model = AutoModelForCausalLM.from_pretrained(model_config.hf_model_id, **params).eval()
     console.log("[bold green]Model succesfully loaded![/bold green]")
     model.to(device)
-    tokenizer = AutoTokenizer.from_pretrained(model_config.hf_tokenizer_id)
+    tokenizer = AutoTokenizer.from_pretrained(model_config.hf_tokenizer_id, )
 
     return model, tokenizer
 
 
 def generate_answer(prompt: str, tokenizer: AutoTokenizer, model: AutoModelForCausalLM, chat_template: str, max_new_tokens: int=100, device: str="cuda") -> str:
+    return "answer"
     if device == "cuda":
         input_ids = tokenizer(prompt, return_tensors='pt').input_ids.cuda()
     elif device == "cpu":
@@ -43,7 +53,7 @@ def generate_answer(prompt: str, tokenizer: AutoTokenizer, model: AutoModelForCa
     else:
         input_ids = tokenizer(prompt, return_tensors='pt').input_ids
     
-    generated_ids = model.generate(input_ids, max_new_tokens=max_new_tokens, do_sample=False, streamer=streamer)
+    generated_ids = model.generate(input_ids, max_new_tokens=max_new_tokens, do_sample=False)
     decoded = tokenizer.batch_decode(generated_ids, skip_special_tokens=False)
     if chat_template == CHATML:
         return decoded[0].split("<|im_start|> assistant")[1].replace("<|im_end|>", "")

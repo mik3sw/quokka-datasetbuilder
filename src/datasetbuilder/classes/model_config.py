@@ -1,6 +1,5 @@
 from transformers import BitsAndBytesConfig
 import torch
-import json
 
 class ModelConfig():
     def __init__(self, hf_model_id: str, 

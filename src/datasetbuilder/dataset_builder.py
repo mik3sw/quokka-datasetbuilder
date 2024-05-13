@@ -6,14 +6,18 @@ from src.datasetbuilder.loader import load_data
 from src.datasetbuilder.model import initialize_model_tokenizer, generate_answer, format_answer_prompt, format_json_prompt
 import multiprocessing
 from rich.console import Console
-from rich.progress import Progress
+from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn, TaskProgressColumn
 from concurrent.futures import ThreadPoolExecutor
+
+
+import time
+import random
 
 
 console = Console()
 
 
-def from_string_to_json(string):
+def from_string_to_json(string: str):
     '''
     Given a JSON string this function will return a JSON obj
     '''
@@ -21,10 +25,10 @@ def from_string_to_json(string):
         json_obj = json.loads(string)
         return json_obj
     except json.JSONDecodeError as e:
-        print("Error decoding JSON:", e)
+        console.print("[bold red]ERROR[/bold red] - failed decoding generated JSON")
         return None
 
-def extract_json_from_text(text) -> str:
+def extract_json_from_text(text: str) -> str:
     '''
     Given a text with a JSON obj in it, this function 
     will return only the json OBJ in string format
@@ -32,7 +36,7 @@ def extract_json_from_text(text) -> str:
     pattern = regex.compile(r'\{(?:[^{}]|(?R))*\}')
     return pattern.findall(text)[0]
 
-def split_list(lst, num_splits):
+def split_list(lst: list, num_splits: int):
     '''
     This function splits list in chunks
     '''
@@ -54,7 +58,19 @@ def split_list(lst, num_splits):
 class DatasetBuilder:
     def __init__(self, generation_config: GenerationConfig, output_dir: str="generated_dataset.jsonl"):
         self.generation_config = generation_config
-        self.progress = Progress()
+        self.progress = Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("({task.completed}/{task.total})"),
+            TextColumn("[Elapsed time: "),
+            TimeElapsedColumn(),
+            TextColumn("] [Remaining time: "),
+            TimeRemainingColumn(),
+            TextColumn("]"),
+            #"[green]Generating dataset... [progress.percentage]{task.percentage:>3.1f}% ({task.completed}/{task.total})",
+              auto_refresh=True,
+              console=console)
         self.output_dir = output_dir
 
     
@@ -63,14 +79,15 @@ class DatasetBuilder:
         This function will start the generation process
         '''
         msg = """
- /$$$$$$$              /$$                                     /$$    
-| $$__  $$            | $$                                    | $$    
-| $$  \ $$  /$$$$$$  /$$$$$$    /$$$$$$   /$$$$$$$  /$$$$$$  /$$$$$$  
-| $$  | $$ |____  $$|_  $$_/   |____  $$ /$$_____/ /$$__  $$|_  $$_/  
-| $$  | $$  /$$$$$$$  | $$      /$$$$$$$|  $$$$$$ | $$$$$$$$  | $$    
-| $$  | $$ /$$__  $$  | $$ /$$ /$$__  $$ \____  $$| $$_____/  | $$ /$$
-| $$$$$$$/|  $$$$$$$  |  $$$$/|  $$$$$$$ /$$$$$$$/|  $$$$$$$  |  $$$$/
-|_______/  \_______/   \___/   \_______/|_______/  \_______/   \___/              
+  /$$$$$$                      /$$       /$$                
+ /$$__  $$                    | $$      | $$                
+| $$  \ $$ /$$   /$$  /$$$$$$ | $$   /$$| $$   /$$  /$$$$$$ 
+| $$  | $$| $$  | $$ /$$__  $$| $$  /$$/| $$  /$$/ |____  $$
+| $$  | $$| $$  | $$| $$  \ $$| $$$$$$/ | $$$$$$/   /$$$$$$$
+| $$/$$ $$| $$  | $$| $$  | $$| $$_  $$ | $$_  $$  /$$__  $$
+|  $$$$$$/|  $$$$$$/|  $$$$$$/| $$ \  $$| $$ \  $$|  $$$$$$$
+ \____ $$$ \______/  \______/ |__/  \__/|__/  \__/ \_______/
+      \__/                                                             
 """
         console.print(msg, style="bold green")
         console.log(f"Loading dataset {self.generation_config.loader_config.dataset}")
@@ -91,7 +108,7 @@ class DatasetBuilder:
         counter = multiprocessing.Value('i', 0)
         
         with self.progress:
-            task = self.progress.add_task("[green]Processing...", total=self.generation_config.num_rows)
+            task = self.progress.add_task("[green]Generating dataset...", total=self.generation_config.num_rows)
 
             with ThreadPoolExecutor(max_workers=num_processes) as executor:
                 futures = []
@@ -107,28 +124,31 @@ class DatasetBuilder:
         Given a dataset (list) this function will 
         iterate each row and create a new set of QA
         '''
-        print("Loading Model and Tokenizer")
+        console.log(f"Loading Model [bold cyan]{self.generation_config.model_config.hf_model_id}[/bold cyan] and Tokenizer [bold cyan]{self.generation_config.model_config.hf_tokenizer_id}[/bold cyan]")
         model, tokenizer = initialize_model_tokenizer(self.generation_config.model_config, console=console)
 
         for item in dataset:
             if counter.value >= self.generation_config.num_rows:
                 break
             context = item[self.generation_config.loader_config.text_column]
-            questions_obj = self._get_json_from_context(context, model, tokenizer)
-            for value in questions_obj.values():
-                if counter.value >= self.generation_config.num_rows:
-                    break
-                counter.value += 1 
-                value = value.strip()
-                if self._checkquestion(value):
-                    answer = self._get_answer_from_context(context, value, model, tokenizer).strip()
-                    dataset_obj = {
-                        "question": value,
-                        "context": context,
-                        "answer": answer
-                    }
-                    self._save_to_dataset(dataset_obj)
-                    self.progress.update(task, advance=1)     
+            try:
+                questions_obj = self._get_json_from_context(context, model, tokenizer)
+                for value in questions_obj.values():
+                    if counter.value >= self.generation_config.num_rows:
+                        break
+                    counter.value += 1 
+                    value = value.strip()
+                    if self._checkquestion(value):
+                        answer = self._get_answer_from_context(context, value, model, tokenizer).strip()
+                        dataset_obj = {
+                            "question": value,
+                            "context": context,
+                            "answer": answer
+                        }
+                        self._save_to_dataset(dataset_obj)
+                        self.progress.update(task, advance=1) 
+            except:
+                console.log("An error occurred while generating")  
 
     def _get_json_from_context(self, context, model, tokenizer):
         '''
@@ -136,7 +156,6 @@ class DatasetBuilder:
         '''
         formatted_prompt = format_json_prompt(context, self.generation_config.model_config.chat_template, self.generation_config.language, self.generation_config.rows_per_chunk)
         answer = generate_answer(formatted_prompt, tokenizer, model, self.generation_config.model_config.chat_template, max_new_tokens=self.generation_config.model_config.max_new_token, device=self.generation_config.model_config.device)
-        answer = '{"q1": "domanda 1?", "q2": "domanda 2?", "q3": "domanda 3?"}'
         return from_string_to_json(extract_json_from_text(answer))
     
 
