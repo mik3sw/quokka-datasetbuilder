@@ -8,6 +8,7 @@ import multiprocessing
 from rich.console import Console
 from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn, TaskProgressColumn
 from concurrent.futures import ThreadPoolExecutor
+import threading
 
 
 import time
@@ -112,7 +113,10 @@ class DatasetBuilder:
 
             with ThreadPoolExecutor(max_workers=num_processes) as executor:
                 futures = []
+                print(f"Lunghezza Subsets: {len(subsets)}")
                 for subset in subsets:
+                    time.sleep(10)
+                    print("Starting Thread")
                     future = executor.submit(self._generate_qa, subset, counter, task)
                     futures.append(future)
 
@@ -147,6 +151,7 @@ class DatasetBuilder:
                         }
                         self._save_to_dataset(dataset_obj)
                         self.progress.update(task, advance=1) 
+                        console.log(f"Thread {threading.current_thread().ident} - row generated")
             except:
                 console.log("An error occurred while generating")  
 

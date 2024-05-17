@@ -5,14 +5,14 @@ from src.datasetbuilder.dataset_builder import DatasetBuilder
 import multiprocessing
 
 loader_config = LoaderConfig(dataset="./test")
-model_config = ModelConfig(hf_model_id="./testmodel", trust_remote_code=True, use_flash_attn=False, device="cpu", chat_template="llama")
+model_config = ModelConfig(hf_model_id="./model", trust_remote_code=True, use_flash_attn=True, device="cuda", chat_template="chatml")
 generation_config = GenerationConfig(
     loader_config=loader_config,
     model_config=model_config,
-    num_rows= 1000,
+    num_rows=100000,
     rows_per_chunk=3,
     language="IT",
-    agents=2
+    agents=3
 )
 
 
